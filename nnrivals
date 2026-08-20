@@ -1059,7 +1059,7 @@ Tabs.Credits:AddSection("NN rivals")
 
 Tabs.Credits:AddParagraph({
     Title   = "Script Info",
-    Content = "NN rivals | Fixed Build\n"
+    Content = "NN rivals \n"
         .. "UI: Fluent by dawid-scripts\n\n"
         .. "Minimize: RightCtrl\n"
         .. "Aimbot Key: set in Aimbot tab",
@@ -1086,6 +1086,6 @@ SaveManager:LoadAutoloadConfig()
 
 Fluent:Notify({
     Title    = "NN rivals",
-    Content  = "Loaded. AC bypass active in background.",
+    Content  = "Loaded. dùng vui vẻ nhé.",
     Duration = 4,
 })
