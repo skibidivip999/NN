@@ -1,0 +1,1091 @@
+--[[
+  NN rivals | Full Script — Fixed Build
+  UI    : Fluent by dawid-scripts
+  Game  : Rivals (Roblox)
+  AC    : Silent background, always on, no toggle
+]]
+
+-- ═══════════════════════════════════════════════════════════════
+--  [0]  SILENT ANTI-CHEAT BYPASS
+--       Chạy ngay lập tức — không UI — không thể tắt
+-- ═══════════════════════════════════════════════════════════════
+;(function()
+    local Players     = game:GetService("Players")
+    local LP          = Players.LocalPlayer
+    local WS          = game:GetService("Workspace")
+    local protected   = {}
+
+    -- executor capability flags
+    local HAS_HOOK    = (hookfunction  ~= nil)
+    local HAS_NCC     = (newcclosure   ~= nil)
+    local HAS_GMM     = (getrawmetatable ~= nil and setreadonly ~= nil)
+    local HAS_GC      = (getgc         ~= nil)
+    local HAS_GCONN   = (getconnections ~= nil)
+    local HAS_SYN     = (syn           ~= nil and syn.protect_gui ~= nil)
+
+    -- helper: safe hook
+    local function safeHook(fn, replacement)
+        if HAS_HOOK and HAS_NCC then
+            pcall(function() hookfunction(fn, newcclosure(replacement)) end)
+        end
+    end
+
+    -- 0-A  Metamethod shield ─────────────────────────────────────
+    if HAS_GMM then
+        pcall(function()
+            local mt = getrawmetatable(game)
+            setreadonly(mt, false)
+            local _ni = mt.__newindex
+            mt.__newindex = newcclosure(function(self, k, v)
+                local block = {WalkSpeed=true, JumpPower=true}
+                if block[k] then return end
+                return _ni(self, k, v)
+            end)
+            setreadonly(mt, true)
+        end)
+    end
+
+    -- 0-B  Kick swallow ──────────────────────────────────────────
+    pcall(function()
+        local _kick = LP.Kick
+        safeHook(_kick, function(self, ...)
+            if self == LP then return end
+            return _kick(self, ...)
+        end)
+    end)
+
+    -- 0-C  Remote disabler (async, no lag) ───────────────────────
+    local acPat = {
+        "kick","ban","detect","cheat","exploit","flag",
+        "report","anticheat","anti_cheat","punish","sanction",
+        "terminate","speedcheck","integ","raycheck",
+    }
+    local function isAC(name)
+        name = name:lower()
+        for _, p in ipairs(acPat) do
+            if name:find(p) then return true end
+        end
+        return false
+    end
+    local function disableRemote(d)
+        if not (d:IsA("RemoteEvent") or d:IsA("RemoteFunction")) then return end
+        if not isAC(d.Name) then return end
+        if HAS_GCONN then
+            pcall(function()
+                for _, c in ipairs(getconnections(d.OnClientEvent)) do
+                    pcall(function() c:Disable() end)
+                end
+            end)
+            pcall(function()
+                for _, c in ipairs(getconnections(d.OnClientInvoke)) do
+                    pcall(function() c:Disable() end)
+                end
+            end)
+        end
+    end
+    -- scan async so execute doesn't freeze
+    task.spawn(function()
+        for _, d in ipairs(game:GetDescendants()) do
+            disableRemote(d)
+            task.wait()   -- yield each iteration — zero lag
+        end
+    end)
+    table.insert(protected, game.DescendantAdded:Connect(function(d)
+        task.defer(function() disableRemote(d) end)
+    end))
+
+    -- 0-D  GC scanner kill (async) ───────────────────────────────
+    if HAS_GC then
+        task.spawn(function()
+            local kill = {
+                "detect","cheat","exploit","scanner",
+                "anticheat","getgenv","gethui","isexploit",
+            }
+            local gc = getgc(true)
+            for _, v in ipairs(gc) do
+                if type(v) == "function" then
+                    pcall(function()
+                        local info = debug.getinfo(v, "n")
+                        if info and info.name then
+                            local n = info.name:lower()
+                            for _, p in ipairs(kill) do
+                                if n:find(p) then
+                                    safeHook(v, function() return nil end)
+                                    break
+                                end
+                            end
+                        end
+                    end)
+                end
+                task.wait()
+            end
+        end)
+    end
+
+    -- 0-E  AC script disabler ────────────────────────────────────
+    local scriptKill = {
+        "anticheat","anti_cheat","cheatdetect","exploitdetect",
+        "hackdetect","integritycheck","speedcheck","teleportcheck",
+    }
+    local function isACScript(name)
+        name = name:lower():gsub("[%s%-_]","")
+        for _, kw in ipairs(scriptKill) do
+            if name:find(kw) then return true end
+        end
+        return false
+    end
+    local function killScript(obj)
+        if (obj:IsA("LocalScript") or obj:IsA("ModuleScript")) and isACScript(obj.Name) then
+            pcall(function() obj.Disabled = true end)
+        end
+    end
+    task.spawn(function()
+        for _, obj in ipairs(game:GetDescendants()) do
+            killScript(obj)
+            task.wait()
+        end
+    end)
+    table.insert(protected, game.DescendantAdded:Connect(function(obj)
+        task.defer(function() killScript(obj) end)
+    end))
+
+    -- 0-F  Camera lock protection ────────────────────────────────
+    pcall(function()
+        local cam = WS.CurrentCamera
+        cam.CameraType = Enum.CameraType.Custom
+        table.insert(protected,
+            cam:GetPropertyChangedSignal("CameraType"):Connect(function()
+                pcall(function() cam.CameraType = Enum.CameraType.Custom end)
+            end)
+        )
+    end)
+
+    -- 0-G  GUI protection ────────────────────────────────────────
+    local function protectGUI(gui)
+        pcall(function()
+            if HAS_SYN then syn.protect_gui(gui) end
+            if gui:IsA("ScreenGui") then
+                gui.ResetOnSpawn = false
+            end
+        end)
+    end
+    pcall(function()
+        for _, gui in ipairs(LP.PlayerGui:GetChildren()) do
+            protectGUI(gui)
+        end
+        table.insert(protected, LP.PlayerGui.ChildAdded:Connect(function(child)
+            task.defer(function() protectGUI(child) end)
+        end))
+    end)
+    pcall(function()
+        if gethui then
+            for _, gui in ipairs(gethui():GetChildren()) do
+                protectGUI(gui)
+            end
+        end
+    end)
+
+    -- 0-H  Respawn persistence ───────────────────────────────────
+    table.insert(protected, LP.CharacterAdded:Connect(function(char)
+        task.wait(0.5)
+        task.spawn(function()
+            for _, d in ipairs(game:GetDescendants()) do
+                disableRemote(d)
+            end
+        end)
+        pcall(function() char:FindFirstChildOfClass("Humanoid") end)
+    end))
+
+    -- 0-I  Periodic re-apply every 30s ───────────────────────────
+    task.spawn(function()
+        while true do
+            task.wait(30)
+            task.spawn(function()
+                for _, d in ipairs(game:GetDescendants()) do
+                    disableRemote(d)
+                    task.wait()
+                end
+            end)
+        end
+    end)
+
+end)()  -- end bypass IIFE
+
+-- ═══════════════════════════════════════════════════════════════
+--  [1]  SERVICES
+-- ═══════════════════════════════════════════════════════════════
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
+local Workspace         = game:GetService("Workspace")
+local Lighting          = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera      = Workspace.CurrentCamera
+
+-- ═══════════════════════════════════════════════════════════════
+--  [2]  LOAD FLUENT
+-- ═══════════════════════════════════════════════════════════════
+local Fluent = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Fluent.lua"
+))()
+local SaveManager = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"
+))()
+local InterfaceManager = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"
+))()
+
+-- ═══════════════════════════════════════════════════════════════
+--  [3]  STATE
+-- ═══════════════════════════════════════════════════════════════
+local State = {
+    -- Aimbot
+    AimbotEnabled    = false,
+    AimbotKey        = Enum.KeyCode.RightShift,
+    AimbotSmoothing  = 0.10,
+    AimbotPrediction = true,
+    AimbotFOV        = 150,
+    AimbotPart       = "Head",
+
+    -- Silent Aim
+    SilentAim        = false,
+    SilentPart       = "Head",
+
+    -- Triggerbot
+    Triggerbot       = false,
+    TriggerDelay     = 0.05,
+    TriggerCooldown  = false,
+
+    -- Autoshoot
+    Autoshoot        = false,
+    AutoshootRange   = 200,
+    AutoshootCD      = false,
+
+    -- Combat
+    RapidFire        = false,
+    FasterReload     = false,
+    ReloadMultiplier = 2,
+
+    -- Wallbang
+    Wallbang          = false,
+    WallbangMaxPen    = 3,
+
+    -- Visual
+    SkyChanger       = false,
+    ChosenSky        = "Default",
+
+    -- Misc
+    SkinUnlocker     = false,
+}
+
+-- ═══════════════════════════════════════════════════════════════
+--  [4]  HELPERS
+-- ═══════════════════════════════════════════════════════════════
+local function GetChar(player)
+    return player and player.Character
+end
+
+local function GetRoot(char)
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function GetHum(char)
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function IsAlive(player)
+    local c = GetChar(player)
+    if not c then return false end
+    local h = GetHum(c)
+    return h and h.Health > 0
+end
+
+local PartMap = {
+    Head     = "Head",
+    Torso    = "UpperTorso",
+    LeftArm  = "LeftUpperArm",
+    RightArm = "RightUpperArm",
+    LeftLeg  = "LeftUpperLeg",
+    RightLeg = "RightUpperLeg",
+}
+
+local function GetPart(char, name)
+    if not char then return nil end
+    return char:FindFirstChild(PartMap[name] or name)
+end
+
+local function ToScreen(pos)
+    local v, vis = Camera:WorldToViewportPoint(pos)
+    return Vector2.new(v.X, v.Y), vis, v.Z
+end
+
+local function GetNearest(fov, partName)
+    local best, bestDist = nil, math.huge
+    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LocalPlayer then continue end
+        if not IsAlive(plr) then continue end
+        local c = GetChar(plr)
+        local p = GetPart(c, partName or State.AimbotPart)
+        if not p then continue end
+        local screen, vis, depth = ToScreen(p.Position)
+        if not vis or depth < 0 then continue end
+        local d = (center - screen).Magnitude
+        if d < fov and d < bestDist then
+            bestDist = d
+            best = { part = p, player = plr }
+        end
+    end
+    return best
+end
+
+-- safe click — works across executors
+local function SafeClick()
+    if mouse1click then
+        pcall(mouse1click)
+    else
+        pcall(function()
+            local vim = game:GetService("VirtualInputManager")
+            vim:SendMouseButtonEvent(0, 0, 0, true,  game, 0)
+            task.wait(0.05)
+            vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+        end)
+    end
+end
+
+-- find the primary fire remote in a tool
+local fireNames = {
+    "fire","shoot","attack","bullet","hit",
+    "damage","shoot_event","fireserver",
+}
+local function GetFireRemote(tool)
+    if not tool then return nil end
+    for _, d in ipairs(tool:GetDescendants()) do
+        if d:IsA("RemoteEvent") then
+            local n = d.Name:lower()
+            for _, fn in ipairs(fireNames) do
+                if n:find(fn) then return d end
+            end
+        end
+    end
+    -- fallback: first RemoteEvent
+    return tool:FindFirstChildWhichIsA("RemoteEvent", true)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+--  [5]  FOV CIRCLE  (Drawing, safe)
+-- ═══════════════════════════════════════════════════════════════
+local FovCircle
+pcall(function()
+    FovCircle = Drawing.new("Circle")
+    FovCircle.Visible      = false
+    FovCircle.Filled       = false
+    FovCircle.Thickness    = 1
+    FovCircle.Color        = Color3.fromRGB(255, 255, 255)
+    FovCircle.Transparency = 0.6
+    FovCircle.NumSides     = 64
+end)
+
+local function SetFovVisible(v)
+    if FovCircle then
+        pcall(function() FovCircle.Visible = v end)
+    end
+end
+local function SetFovPos(center, radius)
+    if FovCircle then
+        pcall(function()
+            FovCircle.Position = center
+            FovCircle.Radius   = radius
+        end)
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════════
+--  [6]  RAPID FIRE
+-- ═══════════════════════════════════════════════════════════════
+local function PatchToolRapidFire(tool)
+    if not tool or not tool:IsA("Tool") then return end
+    pcall(function()
+        local cfg = tool:FindFirstChild("Config")
+            or tool:FindFirstChild("Settings")
+            or tool
+        for _, val in ipairs(cfg:GetDescendants()) do
+            if (val:IsA("NumberValue") or val:IsA("IntValue")) then
+                local n = val.Name:lower()
+                if n:find("cooldown") or n:find("delay")
+                or n:find("firerate") or n:find("rpm") then
+                    val.Value = val.Value / 6
+                end
+            end
+        end
+    end)
+end
+
+local function ApplyRapidFire()
+    local char = GetChar(LocalPlayer)
+    if not char then return end
+    for _, tool in ipairs(char:GetChildren()) do
+        PatchToolRapidFire(tool)
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════════
+--  [7]  WALLBANG
+-- ═══════════════════════════════════════════════════════════════
+local WallbangConn
+
+local function CastThrough(origin, dir, maxDist, maxPen)
+    local hits    = {}
+    local params  = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local excluded = { GetChar(LocalPlayer) }
+    params.FilterDescendantsInstances = excluded
+
+    local curOrigin = origin
+    local remaining = maxDist
+    local pen       = 0
+
+    while pen < maxPen and remaining > 0 do
+        local result = Workspace:Raycast(curOrigin, dir.Unit * remaining, params)
+        if not result then break end
+
+        local model  = result.Instance:FindFirstAncestorOfClass("Model")
+        local player = model and Players:GetPlayerFromCharacter(model)
+        if player and player ~= LocalPlayer and IsAlive(player) then
+            table.insert(hits, { player = player, position = result.Position })
+        end
+
+        remaining   = remaining - (result.Position - curOrigin).Magnitude - 0.3
+        curOrigin   = result.Position + dir.Unit * 0.3
+        table.insert(excluded, result.Instance)
+        params.FilterDescendantsInstances = excluded
+        pen = pen + 1
+    end
+    return hits
+end
+
+local function StartWallbang()
+    if WallbangConn then
+        WallbangConn:Disconnect()
+        WallbangConn = nil
+    end
+    if not State.Wallbang then return end
+
+    WallbangConn = RunService.Heartbeat:Connect(function()
+        if not State.Wallbang then return end
+        local origin = Camera.CFrame.Position
+        local dir    = Camera.CFrame.LookVector
+        local hits   = CastThrough(origin, dir, 600, State.WallbangMaxPen)
+
+        for _, hit in ipairs(hits) do
+            pcall(function()
+                local remoteNames = {
+                    "FireBullet","DamagePlayer","Damage",
+                    "BulletHit","Hit","TakeDamage",
+                }
+                for _, rn in ipairs(remoteNames) do
+                    local remote = ReplicatedStorage:FindFirstChild(rn, true)
+                    if remote and remote:IsA("RemoteEvent") then
+                        remote:FireServer(hit.player, hit.position)
+                        break
+                    end
+                end
+            end)
+        end
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+--  [8]  SKIN UNLOCKER
+-- ═══════════════════════════════════════════════════════════════
+local function ApplySkinUnlocker()
+    task.spawn(function()
+        pcall(function()
+            local remoteNames = {
+                "EquipSkin","UnlockSkin","SetSkin",
+                "GiveSkin","ApplySkin","PurchaseSkin","OwnSkin",
+            }
+            for _, rn in ipairs(remoteNames) do
+                local remote = ReplicatedStorage:FindFirstChild(rn, true)
+                if remote and remote:IsA("RemoteEvent") then
+                    for i = 1, 300 do
+                        pcall(function() remote:FireServer(i) end)
+                        pcall(function() remote:FireServer(tostring(i)) end)
+                        task.wait()
+                    end
+                end
+            end
+        end)
+
+        -- patch character meshes via skin modules
+        pcall(function()
+            local char = GetChar(LocalPlayer)
+            if not char then return end
+            for _, desc in ipairs(ReplicatedStorage:GetDescendants()) do
+                if desc:IsA("ModuleScript") and desc.Name:lower():find("skin") then
+                    pcall(function()
+                        local m = require(desc)
+                        if type(m) ~= "table" then return end
+                        for _, skin in pairs(m) do
+                            pcall(function()
+                                if type(skin) ~= "table" then return end
+                                for _, part in ipairs(char:GetDescendants()) do
+                                    if part:IsA("MeshPart") and skin.TextureId then
+                                        part.TextureID = skin.TextureId
+                                    end
+                                end
+                            end)
+                        end
+                    end)
+                end
+            end
+        end)
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+--  [9]  SKY CHANGER
+-- ═══════════════════════════════════════════════════════════════
+local Skies = {
+    Default    = { ambient=Color3.fromRGB(127,127,127), fog=Color3.fromRGB(192,192,192), fogEnd=100000, bright=1.0 },
+    Night      = { ambient=Color3.fromRGB(8,8,30),     fog=Color3.fromRGB(3,3,15),      fogEnd=400,    bright=0.1 },
+    Sunset     = { ambient=Color3.fromRGB(255,100,40), fog=Color3.fromRGB(180,70,20),   fogEnd=900,    bright=1.5 },
+    Fullbright = { ambient=Color3.fromRGB(255,255,255),fog=Color3.fromRGB(255,255,255), fogEnd=100000, bright=3.0 },
+    Nuclear    = { ambient=Color3.fromRGB(20,255,20),  fog=Color3.fromRGB(0,60,0),      fogEnd=350,    bright=2.0 },
+    Void       = { ambient=Color3.fromRGB(0,0,0),      fog=Color3.fromRGB(0,0,0),       fogEnd=40,     bright=0.0 },
+    Desert     = { ambient=Color3.fromRGB(255,200,110),fog=Color3.fromRGB(210,170,90),  fogEnd=1400,   bright=2.5 },
+}
+
+local function ApplySky(name)
+    local p = Skies[name]
+    if not p then return end
+    pcall(function()
+        Lighting.Ambient        = p.ambient
+        Lighting.OutdoorAmbient = p.ambient
+        Lighting.FogColor       = p.fog
+        Lighting.FogEnd         = p.fogEnd
+        Lighting.FogStart       = 0
+        Lighting.Brightness     = p.bright
+        if name == "Fullbright" or name == "Void" then
+            local sky = Lighting:FindFirstChildOfClass("Sky")
+            if sky then sky:Destroy() end
+        end
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+--  [10] AIMBOT
+-- ═══════════════════════════════════════════════════════════════
+local AimbotConn
+
+local function StartAimbot()
+    if AimbotConn then AimbotConn:Disconnect() end
+    AimbotConn = RunService.RenderStepped:Connect(function()
+        local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        SetFovPos(center, State.AimbotFOV)
+        SetFovVisible(State.AimbotEnabled)
+
+        if not State.AimbotEnabled then return end
+        if not UserInputService:IsKeyDown(State.AimbotKey) then return end
+
+        local hit = GetNearest(State.AimbotFOV, State.AimbotPart)
+        if not hit then return end
+
+        local targetPos = hit.part.Position
+
+        -- velocity prediction
+        if State.AimbotPrediction then
+            pcall(function()
+                local root = GetRoot(GetChar(hit.player))
+                if root then
+                    local vel = root.AssemblyLinearVelocity
+                        or root.Velocity
+                        or Vector3.zero
+                    targetPos = targetPos + vel * 0.083
+                end
+            end)
+        end
+
+        pcall(function()
+            local currentCF = Camera.CFrame
+            local targetCF  = CFrame.lookAt(currentCF.Position, targetPos)
+            Camera.CFrame   = currentCF:Lerp(
+                targetCF,
+                math.clamp(State.AimbotSmoothing, 0.01, 1.0)
+            )
+        end)
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+--  [11] TRIGGERBOT
+-- ═══════════════════════════════════════════════════════════════
+local TriggerbotConn
+
+local function StartTriggerbot()
+    if TriggerbotConn then TriggerbotConn:Disconnect() end
+    TriggerbotConn = RunService.Heartbeat:Connect(function()
+        if not State.Triggerbot then return end
+        if State.TriggerCooldown then return end
+
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = { GetChar(LocalPlayer) }
+
+        local result = Workspace:Raycast(
+            Camera.CFrame.Position,
+            Camera.CFrame.LookVector * 1200,
+            params
+        )
+        if not result then return end
+
+        local model  = result.Instance:FindFirstAncestorOfClass("Model")
+        local player = model and Players:GetPlayerFromCharacter(model)
+        if not (player and player ~= LocalPlayer and IsAlive(player)) then return end
+
+        State.TriggerCooldown = true
+        task.delay(State.TriggerDelay, function()
+            -- fire via remote or mouse click
+            pcall(function()
+                local char   = GetChar(LocalPlayer)
+                local tool   = char and char:FindFirstChildOfClass("Tool")
+                local remote = tool and GetFireRemote(tool)
+                if remote then
+                    remote:FireServer(result.Position)
+                else
+                    SafeClick()
+                end
+            end)
+            task.wait(0.05)
+            State.TriggerCooldown = false
+        end)
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+--  [12] SILENT AIM
+--       Hook approach: redirect FireServer position arg
+--       Works without hooking C-side Workspace.Raycast
+-- ═══════════════════════════════════════════════════════════════
+local SilentHooked = {}
+
+local function HookToolForSilent(tool)
+    if not tool or not tool:IsA("Tool") then return end
+    if SilentHooked[tool] then return end
+    SilentHooked[tool] = true
+
+    local function hookRemote(remote)
+        if not remote or not remote:IsA("RemoteEvent") then return end
+        local _old = remote.FireServer
+        remote.FireServer = newcclosure and newcclosure(function(self, ...)
+            if State.SilentAim then
+                local target = GetNearest(State.AimbotFOV, State.SilentPart)
+                if target then
+                    local args    = { ... }
+                    -- first positional arg is almost always the hit position
+                    args[1]       = target.part.Position
+                    return _old(self, table.unpack(args))
+                end
+            end
+            return _old(self, ...)
+        end) or function(self, ...)
+            if State.SilentAim then
+                local target = GetNearest(State.AimbotFOV, State.SilentPart)
+                if target then
+                    local args = { ... }
+                    args[1]    = target.part.Position
+                    return _old(self, table.unpack(args))
+                end
+            end
+            return _old(self, ...)
+        end
+    end
+
+    for _, desc in ipairs(tool:GetDescendants()) do
+        hookRemote(desc)
+    end
+    tool.DescendantAdded:Connect(hookRemote)
+end
+
+local function ApplySilentAim()
+    pcall(function()
+        local char = GetChar(LocalPlayer)
+        if not char then return end
+        for _, tool in ipairs(char:GetChildren()) do
+            HookToolForSilent(tool)
+        end
+    end)
+end
+
+-- watch for new tools equipped (covers respawn + mid-game equip)
+local function WatchForTools(char)
+    if not char then return end
+    for _, child in ipairs(char:GetChildren()) do
+        if child:IsA("Tool") then
+            if State.SilentAim then HookToolForSilent(child) end
+            if State.RapidFire  then PatchToolRapidFire(child) end
+        end
+    end
+    char.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            task.wait(0.1)
+            if State.SilentAim then HookToolForSilent(child) end
+            if State.RapidFire  then PatchToolRapidFire(child) end
+        end
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+--  [13] AUTOSHOOT
+-- ═══════════════════════════════════════════════════════════════
+local AutoshootConn
+
+local function StartAutoshoot()
+    if AutoshootConn then AutoshootConn:Disconnect() end
+    AutoshootConn = RunService.Heartbeat:Connect(function()
+        if not State.Autoshoot or State.AutoshootCD then return end
+
+        local hit = GetNearest(State.AutoshootRange, State.AimbotPart)
+        if not hit then return end
+
+        State.AutoshootCD = true
+        pcall(function()
+            local char   = GetChar(LocalPlayer)
+            local tool   = char and char:FindFirstChildOfClass("Tool")
+            local remote = tool and GetFireRemote(tool)
+            if remote then
+                remote:FireServer(hit.part.Position)
+            else
+                SafeClick()
+            end
+        end)
+        task.delay(0.12, function() State.AutoshootCD = false end)
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+--  [14] FASTER RELOAD
+-- ═══════════════════════════════════════════════════════════════
+local function ApplyFasterReload()
+    pcall(function()
+        local char = GetChar(LocalPlayer)
+        if not char then return end
+
+        -- speed up playing animation tracks
+        local hum = GetHum(char)
+        if hum then
+            local animator = hum:FindFirstChildOfClass("Animator")
+            if animator then
+                for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                    if track.Name and track.Name:lower():find("reload") then
+                        track:AdjustSpeed(State.ReloadMultiplier)
+                    end
+                end
+            end
+        end
+
+        -- patch numeric reload values in tools
+        for _, tool in ipairs(char:GetChildren()) do
+            if not tool:IsA("Tool") then continue end
+            local cfg = tool:FindFirstChild("Config")
+                or tool:FindFirstChild("Settings")
+                or tool
+            for _, val in ipairs(cfg:GetDescendants()) do
+                if val:IsA("NumberValue") or val:IsA("IntValue") then
+                    if val.Name:lower():find("reload") then
+                        val.Value = val.Value / State.ReloadMultiplier
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+--  [15] RESPAWN HANDLER
+-- ═══════════════════════════════════════════════════════════════
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(0.8)
+    WatchForTools(char)
+    if State.RapidFire    then ApplyRapidFire()    end
+    if State.FasterReload then ApplyFasterReload()  end
+    if State.SilentAim    then ApplySilentAim()     end
+    if State.SkinUnlocker then ApplySkinUnlocker()  end
+    if State.Wallbang     then StartWallbang()       end
+end)
+
+-- hook current character immediately
+pcall(function()
+    local char = GetChar(LocalPlayer)
+    if char then WatchForTools(char) end
+end)
+
+-- ═══════════════════════════════════════════════════════════════
+--  [16] BUILD UI
+-- ═══════════════════════════════════════════════════════════════
+local Window = Fluent:CreateWindow({
+    Title       = "NN rivals",
+    SubTitle    = "by NN",
+    TabWidth    = 160,
+    Size        = UDim2.fromOffset(600, 480),
+    Acrylic     = true,
+    Theme       = "Dark",
+    MinimizeKey = Enum.KeyCode.RightControl,
+})
+
+local Tabs = {
+    Aimbot  = Window:AddTab({ Title = "Aimbot",  Icon = "crosshair" }),
+    Combat  = Window:AddTab({ Title = "Combat",  Icon = "zap"       }),
+    Visual  = Window:AddTab({ Title = "Visual",  Icon = "eye"       }),
+    Misc    = Window:AddTab({ Title = "Misc",    Icon = "settings"  }),
+    Credits = Window:AddTab({ Title = "Credits", Icon = "info"      }),
+}
+
+local PARTS    = { "Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg" }
+local AIMKEYS  = { "RightShift","E","Q","F","C","X","Z","RightAlt","V","G","T" }
+local SKIES    = { "Default","Night","Sunset","Fullbright","Nuclear","Void","Desert" }
+
+-- ── AIMBOT TAB ──────────────────────────────────────────────────
+Tabs.Aimbot:AddSection("Aimbot")
+
+Tabs.Aimbot:AddToggle("t_aimbot", {
+    Title    = "Aimbot",
+    Default  = false,
+    Callback = function(v) State.AimbotEnabled = v end,
+})
+
+Tabs.Aimbot:AddDropdown("d_aimkey", {
+    Title    = "Hold Key",
+    Values   = AIMKEYS,
+    Default  = "RightShift",
+    Callback = function(v)
+        State.AimbotKey = Enum.KeyCode[v] or Enum.KeyCode.RightShift
+    end,
+})
+
+Tabs.Aimbot:AddDropdown("d_aimpart", {
+    Title    = "Target Part",
+    Values   = PARTS,
+    Default  = "Head",
+    Callback = function(v) State.AimbotPart = v end,
+})
+
+Tabs.Aimbot:AddSlider("s_fov", {
+    Title    = "FOV Radius",
+    Min      = 10,
+    Max      = 600,
+    Default  = 150,
+    Rounding = 0,
+    Callback = function(v) State.AimbotFOV = v end,
+})
+
+Tabs.Aimbot:AddSlider("s_smooth", {
+    Title    = "Smoothing",
+    Min      = 1,
+    Max      = 100,
+    Default  = 10,
+    Rounding = 0,
+    Callback = function(v) State.AimbotSmoothing = v / 100 end,
+})
+
+Tabs.Aimbot:AddToggle("t_predict", {
+    Title    = "Velocity Prediction",
+    Default  = true,
+    Callback = function(v) State.AimbotPrediction = v end,
+})
+
+Tabs.Aimbot:AddSection("Silent Aim")
+
+Tabs.Aimbot:AddToggle("t_silent", {
+    Title       = "Silent Aim",
+    Description = "Bullet hits target, camera doesn't move",
+    Default     = false,
+    Callback    = function(v)
+        State.SilentAim = v
+        if v then ApplySilentAim() end
+    end,
+})
+
+Tabs.Aimbot:AddDropdown("d_silentpart", {
+    Title    = "Silent Target Part",
+    Values   = PARTS,
+    Default  = "Head",
+    Callback = function(v) State.SilentPart = v end,
+})
+
+Tabs.Aimbot:AddSection("Triggerbot")
+
+Tabs.Aimbot:AddToggle("t_trigger", {
+    Title    = "Triggerbot",
+    Default  = false,
+    Callback = function(v) State.Triggerbot = v end,
+})
+
+Tabs.Aimbot:AddSlider("s_triggerdelay", {
+    Title    = "Trigger Delay (ms)",
+    Min      = 0,
+    Max      = 500,
+    Default  = 50,
+    Rounding = 0,
+    Callback = function(v) State.TriggerDelay = v / 1000 end,
+})
+
+Tabs.Aimbot:AddSection("Auto Shoot")
+
+Tabs.Aimbot:AddToggle("t_autoshoot", {
+    Title    = "Auto Shoot",
+    Default  = false,
+    Callback = function(v) State.Autoshoot = v end,
+})
+
+Tabs.Aimbot:AddSlider("s_autorange", {
+    Title    = "Auto Shoot Range",
+    Min      = 50,
+    Max      = 1200,
+    Default  = 200,
+    Rounding = 0,
+    Callback = function(v) State.AutoshootRange = v end,
+})
+
+-- ── COMBAT TAB ──────────────────────────────────────────────────
+Tabs.Combat:AddSection("Weapons")
+
+Tabs.Combat:AddToggle("t_rapid", {
+    Title       = "Rapid Fire",
+    Description = "Removes fire-rate cooldown",
+    Default     = false,
+    Callback    = function(v)
+        State.RapidFire = v
+        if v then ApplyRapidFire() end
+    end,
+})
+
+Tabs.Combat:AddToggle("t_reload", {
+    Title       = "Faster Reload",
+    Description = "Speeds up reload timing",
+    Default     = false,
+    Callback    = function(v)
+        State.FasterReload = v
+        if v then ApplyFasterReload() end
+    end,
+})
+
+Tabs.Combat:AddSlider("s_reloadmult", {
+    Title    = "Reload Speed Multiplier",
+    Min      = 1,
+    Max      = 10,
+    Default  = 2,
+    Rounding = 1,
+    Callback = function(v) State.ReloadMultiplier = v end,
+})
+
+Tabs.Combat:AddSection("Wallbang")
+
+Tabs.Combat:AddToggle("t_wallbang", {
+    Title       = "Wallbang",
+    Description = "Shoot through walls via penetration raycast",
+    Default     = false,
+    Callback    = function(v)
+        State.Wallbang = v
+        StartWallbang()
+    end,
+})
+
+Tabs.Combat:AddSlider("s_wallpen", {
+    Title    = "Max Penetrations",
+    Min      = 1,
+    Max      = 8,
+    Default  = 3,
+    Rounding = 0,
+    Callback = function(v) State.WallbangMaxPen = v end,
+})
+
+-- ── VISUAL TAB ──────────────────────────────────────────────────
+Tabs.Visual:AddSection("Sky Changer")
+
+Tabs.Visual:AddToggle("t_sky", {
+    Title    = "Enable Sky Changer",
+    Default  = false,
+    Callback = function(v)
+        State.SkyChanger = v
+        if v then ApplySky(State.ChosenSky) else ApplySky("Default") end
+    end,
+})
+
+Tabs.Visual:AddDropdown("d_sky", {
+    Title    = "Sky Preset",
+    Values   = SKIES,
+    Default  = "Default",
+    Callback = function(v)
+        State.ChosenSky = v
+        if State.SkyChanger then ApplySky(v) end
+    end,
+})
+
+-- ── MISC TAB ────────────────────────────────────────────────────
+Tabs.Misc:AddSection("Skin Unlocker")
+
+Tabs.Misc:AddToggle("t_skin", {
+    Title       = "Skin Unlocker",
+    Description = "Attempts to unlock all skins via remotes",
+    Default     = false,
+    Callback    = function(v)
+        State.SkinUnlocker = v
+        if v then ApplySkinUnlocker() end
+    end,
+})
+
+Tabs.Misc:AddButton({
+    Title    = "Force Unlock Now",
+    Callback = function()
+        ApplySkinUnlocker()
+        Fluent:Notify({ Title="NN rivals", Content="Skin unlock running.", Duration=2 })
+    end,
+})
+
+Tabs.Misc:AddSection("Config")
+
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+SaveManager:SetFolder("NNRivals")
+InterfaceManager:SetFolder("NNRivals")
+InterfaceManager:BuildInterfaceSection(Tabs.Misc)
+SaveManager:BuildConfigSection(Tabs.Misc)
+
+-- ── CREDITS TAB ─────────────────────────────────────────────────
+Tabs.Credits:AddSection("NN rivals")
+
+Tabs.Credits:AddParagraph({
+    Title   = "Script Info",
+    Content = "NN rivals | Fixed Build\n"
+        .. "UI: Fluent by dawid-scripts\n\n"
+        .. "Minimize: RightCtrl\n"
+        .. "Aimbot Key: set in Aimbot tab",
+})
+
+Tabs.Credits:AddParagraph({
+    Title   = "Anti-Cheat",
+    Content = "Running silently in background.\n"
+        .. "Cannot be toggled or disabled.\n"
+        .. "Auto re-applies on respawn + every 30s.",
+})
+
+-- ═══════════════════════════════════════════════════════════════
+--  [17] INIT — start all loops
+-- ═══════════════════════════════════════════════════════════════
+Window:SelectTab(1)
+
+StartAimbot()
+StartTriggerbot()
+StartAutoshoot()
+-- Wallbang starts only when toggled on (StartWallbang checks State.Wallbang)
+
+SaveManager:LoadAutoloadConfig()
+
+Fluent:Notify({
+    Title    = "NN rivals",
+    Content  = "Loaded. AC bypass active in background.",
+    Duration = 4,
+})
