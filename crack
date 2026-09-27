@@ -1,0 +1,267 @@
+if not game:IsLoaded() then
+	game.Loaded:Wait()
+end
+
+print("Night Hub loaded (Key Removed)!")
+
+pcall(function()
+	game:GetService("StarterGui"):SetCore("SendNotification", { 
+		Title = "Night Hub", 
+		Text = "Đã bỏ Key System!", 
+		Duration = 5 
+	})
+end)
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+game:GetService("RunService")
+game:GetService("CollectionService")
+game:GetService("Lighting")
+game:GetService("HttpService")
+game:GetService("TweenService")
+local localPlayer = Players.LocalPlayer
+local genv = type(getgenv) == "function" and getgenv() or _G
+
+if genv.NightSAE and genv.NightSAE.Unload then
+	pcall(genv.NightSAE.Unload)
+	task.wait(0.05)
+end
+
+local flag = true
+local tbl = {}
+local saeGen = (genv.__SAE_GEN or 0) + 1
+genv.__SAE_GEN = saeGen
+
+local function fn2()
+	return flag and genv.__SAE_GEN == saeGen
+end
+
+local function fn3(arg)
+	tbl[#tbl + 1] = arg
+	return arg
+end
+
+local tbl2 = { "", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc" }
+
+local function fn4(arg)
+	local n = tonumber(arg) or 0
+	local str = n < 0 and "-" or ""
+	local n2 = math.abs(n)
+	local n3 = 1
+
+	while n2 >= 1000 and n3 < #tbl2 do
+		n2 /= 1000
+		n3 += 1
+	end
+
+	if n3 == 1 then
+		return str .. string.format("%d", n2)
+	end
+	return str .. string.format("%.2f%s", n2, tbl2[n3])
+end
+
+local function fn5(arg)
+	local n = math.max(0, math.floor(tonumber(arg) or 0))
+	if n >= 3600 then
+		return string.format("%dh %02dm", n // 3600, n % 3600 // 60)
+	end
+	return string.format("%dm %02ds", n // 60, n % 60)
+end
+
+local function fn6(arg, arg2)
+	local str = tostring(arg or "")
+	if arg2 <= #str then
+		return str:sub(1, arg2)
+	end
+	return str .. string.rep(" ", arg2 - #str)
+end
+
+local function fn7()
+	local character = localPlayer.Character
+	if not character me
+		return nil
+	end
+	local findFirstChildOfClass = character.FindFirstChildOfClass
+	return character, character:FindFirstChild("HumanoidRootPart"), findFirstChildOfClass(character, "Humanoid")
+end
+
+local function fn8(arg)
+	return Vector3.new(arg.X, 0, arg.Z)
+end
+
+local function fn9(arg, arg2)
+	return fn8(arg - arg2).Magnitude
+end
+
+local function fn10(arg)
+	local n = 0
+
+	for k in pairs(arg) do
+		n += 1
+	end
+
+	return n
+end
+
+local function fn11(arg, arg2)
+	local now = os.clock()
+
+	while os.clock() - now < arg do
+		if not fn2() then
+			return nil
+		end
+		local v2 = arg2()
+		if v2 then
+			return v2
+		end
+		task.wait(0.05)
+	end
+end
+
+local function fn12(arg, arg2, ...)
+	local v2 = table.pack(...)
+	local flag2 = false
+	local v3 = nil
+	local str = nil
+
+	task.spawn(function()
+		local ok, result, result2 = pcall(arg2, table.unpack(v2, 1, v2.n))
+
+		if ok then
+			v3 = result
+			str = result2
+		else
+			str = tostring(result)
+		end
+
+		flag2 = true
+	end)
+
+	local now = os.clock()
+
+	while not flag2 and os.clock() - now < arg do
+		task.wait(0.05)
+	end
+
+	if not flag2 then
+		return nil, "timed out"
+	end
+	return v3, str
+end
+
+local tbl3 = {}
+
+local function fn13(arg, arg2)
+	local v2 = ReplicatedStorage
+
+	for match in arg:gmatch("[^%.]+") do
+		v2 = v2:FindFirstChild(match) or v2:WaitForChild(match, 6)
+
+		if not v2 then
+			if not arg2 then
+				tbl3[#tbl3 + 1] = "RS." .. arg
+			end
+
+			return nil
+		end
+	end
+
+	local ok, result = pcall(require, v2)
+
+	if not ok then
+		if not arg2 then
+			tbl3[#tbl3 + 1] = "RS." .. arg .. " (" .. tostring(result):sub(1, 60) .. ")"
+		end
+
+		return nil
+	end
+
+	return result
+end
+
+local Remotes = fn13("Shared.Remotes")
+fn13("Shared.Save")
+fn13("Client.EggState")
+fn13("Client.PlotState")
+fn13("Client.AssetRoster")
+fn13("Data.Areas")
+fn13("Data.Guards")
+fn13("Data.Assets")
+fn13("Data.Rarity")
+fn13("Data.Bases")
+fn13("Data.Trails")
+fn13("Data.Treadmills")
+fn13("Data.Gears")
+fn13("Shared.Util.AssetEarnings")
+fn13("Shared.Util.AssetItems")
+fn13("Shared.Util.AssetLottery")
+fn13("Shared.Util.FuseKernel")
+fn13("Shared.Util.AreaEggCycle")
+fn13("Shared.Util.AreaEggSlotIdentity")
+fn13("Shared.Util.TreadmillUtil")
+fn13("Shared.Util.SafeZoneBarriers")
+fn13("Shared.Modules.RiftZoneLadder")
+fn13("Shared.Modules.Ragdoll", true)
+fn13("Client.Util.AssetSizeClassification", true)
+fn13("Data.Sakura", true)
+fn13("Data.MonsterParasite", true)
+fn13("Data.BossEvent", true)
+
+if #tbl3 > 0 then
+	warn("[Night Hub] this game update moved these module paths, the script stopped:")
+
+	for _, v2 in ipairs(tbl3) do
+		warn("   " .. v2)
+	end
+
+	return
+end
+
+local function fn14(arg, ...)
+	if not arg then
+		return nil, "remote missing"
+	end
+	local v2 = pcall
+	local invokeServer = arg.InvokeServer
+	local v3 = table.pack(...)
+	v3.n = 3 + v3.n - 1
+	table.move(v3, 1, v3.n, 3, v3)
+	v3[1] = invokeServer
+	v3[2] = arg
+	local v4, v5, v6 = v2(table.unpack(v3, 1, v3.n))
+	if not v4 then
+		return nil, tostring(v5)
+	end
+	return v5, v6
+end
+
+local function fn15(arg, ...)
+	if not arg then
+		return false
+	end
+	local v2 = pcall
+	local fireServer = arg.FireServer
+	local v3 = table.pack(...)
+	v3.n = 3 + v3.n - 1
+	table.move(v3, 1, v3.n, 3, v3)
+	v3[1] = fireServer
+	v3[2] = arg
+	return (v2(table.unpack(v3, 1, v3.n)))
+end
+
+local function fn16(arg, ...)
+	local v2 = fn14
+	local v3 = table.pack(...)
+	v3.n = 2 + v3.n - 1
+	table.move(v3, 1, v3.n, 2, v3)
+	v3[1] = arg
+	local v4, v5 = v2(table.unpack(v3, 1, v3.n))
+	if type(v4) == "table" then
+		return v4
+	end
+
+	if v4 == true and type(v5) == "table" then
+		return v5
+	end
+	return nil, tostring(v5 or v4 or "no reply")
+end
