@@ -11,7 +11,7 @@ local function fn()
 		local tbl = {
 			interfaceName = "Night Hub crack",
 			titleText = "Night Hub crack",
-			hintText = "key: NN_crack",
+			hintText = "enter key to continue",
 			keyInputLabelText = "License key",
 			submitButtonText = "Submit Key",
 			getKeyButtonText = "GET KEY",
