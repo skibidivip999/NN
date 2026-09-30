@@ -10,7 +10,6 @@ local function fn()
 		return hui
 	end
 
-	-- ═══ SCREENGUI ═══
 	local ScreenGui = Instance.new("ScreenGui")
 	ScreenGui.Name = "NightHubLoading"
 	ScreenGui.DisplayOrder = 999
@@ -108,12 +107,10 @@ local function fn()
 	FillCorner.CornerRadius = UDim.new(1, 0)
 	FillCorner.Parent = Fill
 
-	-- ═══ FADE IN ═══
 	TweenService:Create(Scrim, TweenInfo.new(0.15), { BackgroundTransparency = 0.45 }):Play()
 	TweenService:Create(Canvas, TweenInfo.new(0.18), { GroupTransparency = 0 }):Play()
 	task.wait(0.2)
 
-	-- ═══ PROGRESS LOGIC ═══
 	local currentPct = 0
 	local function setProgress(target, msg, dur)
 		dur = dur or 0.45
@@ -133,7 +130,6 @@ local function fn()
 		if msg then Step.Text = msg end
 	end
 
-	-- ═══ STAGES 1% → 100% ═══
 	setProgress(8,   "Authorising session",   0.35)
 	task.wait(0.1)
 	setProgress(22,  "Fetching components",   0.4)
@@ -146,7 +142,6 @@ local function fn()
 	task.wait(0.1)
 	setProgress(100, "Finishing up",          0.5)
 
-	-- ═══ FADE OUT ═══
 	task.wait(0.35)
 	TweenService:Create(Scrim, TweenInfo.new(0.15), { BackgroundTransparency = 1 }):Play()
 	TweenService:Create(Canvas, TweenInfo.new(0.15), { GroupTransparency = 1 }):Play()
@@ -166,7 +161,6 @@ local function fn()
 	}
 end
 
--- ═══ AUTH BYPASS — chạy thẳng ═══
 local v = fn()
 
 if type(v) ~= "table" then
