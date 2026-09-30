@@ -11,7 +11,7 @@ local function fn()
 	end
 
 	local ScreenGui = Instance.new("ScreenGui")
-	ScreenGui.Name = "NightHubLoading"
+	ScreenGui.Name = "cracking...."
 	ScreenGui.DisplayOrder = 999
 	ScreenGui.IgnoreGuiInset = true
 	ScreenGui.ResetOnSpawn = false
